@@ -1,9 +1,16 @@
 const mongoose = require('mongoose');
 
 const TenantModel = new mongoose.Schema({
-    Fullname:{
+    FirstName: {
         type: String,
-        required:true   
+        required: true   
+    },
+    MiddleName: {
+        type: String, 
+    },
+    LastName: {
+        type: String,
+        required: true   
     },
     Email:{
         type: String,

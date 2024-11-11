@@ -6,14 +6,18 @@ const TenantModel = require('../Models/tenantModel.js');
 const PropertyModel = require('../Models/PropertyModel.js');
 const LeaseTermModel = require('../Models/LeaseTerm.js');
 const LandlordLeaseModel = require('../Models/LandlordLeaseAgreement.js');
-
+const TenantLeaseModel = require('../Models/TenantLeaseAgreement.js');
+const PaymentModel = require('../Models/PaymentModel.js');
+const BillingModel = require('../Models/BillingModel.js');
+const MaintenanceModel = require('../Models/Maintenance.js');
+const TenantProof = require('../Models/TenantProof.js');
 
 const router = express.Router();
 
 // Landlord Route
 
 router.post('/landlord', async(req,res)=>{
-    const {Fullname, Email, Password, Country, City, State, Pincode} = req.body;
+    const {FirstName,MiddleName,LastName, Email, Password, Country, City, State, Pincode} = req.body;
 
     try {
         const existingUser = await LandlordModel.findOne({ Email });
@@ -22,7 +26,9 @@ router.post('/landlord', async(req,res)=>{
         }   
 
         const newUser = new LandlordModel({
-            Fullname,
+            FirstName,
+            MiddleName,
+            LastName,
             Email,
             Password,
             Country,
@@ -52,7 +58,7 @@ router.post('/account-details', async (req, res) => {
         
         // const landlordId = req.headers['landlordid']; [QUERY PARAMS]
         const landlordId = req.query._id || req.body.landlordId;
-        const { AccountNumber, IFSCCODE } = req.body;
+        const { AccountHolderName, BankName, AccountNumber} = req.body;
 
         if (!landlordId) {
             return res.status(400).json({ message: 'Landlord ID is required in headers' });
@@ -60,8 +66,9 @@ router.post('/account-details', async (req, res) => {
 
 
         const newAccount = new AccountModel({
-            AccountNumber,
-            IFSCCODE
+            AccountHolderName,
+            BankName,
+            AccountNumber
         });
 
         const savedAccount = await newAccount.save();
@@ -89,7 +96,7 @@ router.post('/account-details', async (req, res) => {
 // Tenant Route
 
 router.post('/tenant', async(req,res)=>{
-    const {Fullname, Email, Password, PhoneNumber, Country, City, State, Pincode, IDProof, Status} = req.body;
+    const {FirstName, MiddleName, LastName, Email, Password, PhoneNumber, Country, City, State, Pincode, IDProof, Status} = req.body;
 
     try {
         const existingUser = await TenantModel.findOne({ Email });
@@ -98,7 +105,9 @@ router.post('/tenant', async(req,res)=>{
         }   
 
         const newUser = new TenantModel({
-            Fullname,
+            FirstName,
+            MiddleName,
+            LastName,
             Email,
             Password,
             PhoneNumber,
@@ -216,8 +225,8 @@ router.post('/landlordLeaseAgreement', async (req, res) => {
             return res.status(400).json({ message: "Property does not exist" });
         }
 
-        const tenantExists = await LeaseTermModel.findById(leaseTermID);
-        if (!tenantExists) {
+        const leaseTermExists = await LeaseTermModel.findById(leaseTermID);
+        if (!leaseTermExists) {
             return res.status(400).json({ message: "LeaseTerm does not exist" });
         }
 
@@ -244,93 +253,238 @@ router.post('/landlordLeaseAgreement', async (req, res) => {
 });
 
 
-// router.post('/payment', async (req, res) => {
-//     const { paymentDate, amount, paymentType, status } = req.body;
+// Tenant Lease Agreement 
 
-//     const agreementId = req.query.agreementId || req.body.agreementId;
-//     const tenantId = req.query.tenantId || req.body.tenantId;
+router.post('/tenantLeaseAgreement', async (req, res) => {
+    const { AcceptanceStatus, leaseTerms, Signature } = req.body;
 
-//     try {
+    const propertyId = req.query.propertyId || req.body.propertyId;
+    const tenantId = req.query.tenantId || req.body.tenantId;
+    const landlordLeaseAgreementId = req.query.LLAID || req.body.LLAID;
+
+    try {
+  
+        if (!propertyId || !tenantId || !landlordLeaseAgreementId) {
+            return res.status(400).json({ message: "PropertyID, tenantId, and landlordLeaseAgreementId are required" });
+        }
+
+
+        const propertyExists = await PropertyModel.findById(propertyId);
+        if (!propertyExists) {
+            return res.status(400).json({ message: "Property does not exist" });
+        }
+
+   
+        const tenantExists = await TenantModel.findById(tenantId);
+        if (!tenantExists) {
+            return res.status(400).json({ message: "Tenant ID does not exist" });
+        }
+
+   
+        const newTenantLeaseAgreement = new TenantLeaseModel({
+            AcceptanceStatus,
+            leaseTerms,
+            Signature,
+            propertyId,
+            tenantId,
+            landlordLeaseAgreementId,
+        });
+
+        const saveTenantLeaseAgreement = await newTenantLeaseAgreement.save();
+
+      
+        const updatedLandlordLeaseAgreement = await LandlordLeaseModel.findByIdAndUpdate(
+            landlordLeaseAgreementId,
+            { LeaseAcceptanceStatus: saveTenantLeaseAgreement.AcceptanceStatus },
+            { new: true }
+        );
+
+        if (!updatedLandlordLeaseAgreement) {
+            return res.status(400).json({ message: "Landlord Lease ID does not exist" });
+        }
+
        
-//         if (!agreementId || !tenantId) {
-//             return res.status(400).json({ message: "Agreement ID and Tenant ID are required" });
-//         }
+        res.status(201).json({
+            message: "Tenant Lease Agreement created successfully and Landlord acceptance status updated",
+            UpdatedTenantLeaseModel: updatedLandlordLeaseAgreement,
+        });
+    } catch (error) {
+        console.error("Error while creating Tenant Lease Agreement:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+});
+
+// Payment Route
+
+router.post('/payment', async (req, res) => {
+    const { paymentDate, amount, paymentType, status } = req.body;
+    const tenantId = req.query.tenantId || req.body.tenantId;
+    const landlordLeaseAgreementId = req.query.LLAID || req.body.LLAID;
+
+    try {
+        
+        if (!tenantId || !landlordLeaseAgreementId) {
+            return res.status(400).json({ message: "tenantId and landlordLeaseAgreementId are required" });
+        }
+
+        const tenantExists = await TenantModel.findById(tenantId);
+        if (!tenantExists) {
+            return res.status(400).json({ message: "Tenant does not exist" });
+        }
 
     
-//         const agreementExists = await LeaseAgreementModel.findById(agreementId);
-//         if (!agreementExists) {
-//             return res.status(400).json({ message: "Agreement does not exist" });
-//         }
+        const landlordLeaseExists = await LandlordLeaseModel.findById(landlordLeaseAgreementId);
+        if (!landlordLeaseExists) {
+            return res.status(400).json({ message: "Landlord Lease Agreement does not exist" });
+        }
 
-//         const tenantExists = await TenantModel.findById(tenantId);
-//         if (!tenantExists) {
-//             return res.status(400).json({ message: "Tenant does not exist" });
-//         }
+        const newPayment = new PaymentModel({
+            landlordAgreementId: landlordLeaseAgreementId,
+            tenantId,
+            paymentDate,
+            amount,
+            paymentType,
+            status,
+        });
 
-//         // Create a new payment record
-//         const newPayment = new PaymentModel({
-//             agreementId,
-//             tenantId,
-//             paymentDate,
-//             amount,
-//             paymentType,
-//             status
-//         });
+        const savedPayment = await newPayment.save();
 
-//         await newPayment.save();
+        res.status(201).json({
+            message: "Payment created successfully",
+            payment: savedPayment,
+        });
+    } catch (error) {
+        console.error("Error while creating payment:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+});
 
-//         res.status(201).json({ message: "Payment created successfully", payment: newPayment });
-//     } catch (error) {
-//         console.error("Error while creating payment:", error);
-//         res.status(500).json({ message: "Internal Server Error" });
-//     }
-// });
+// Billing Route
 
 
-// router.post('/maintenance', async (req, res) => {
-    
-//     const { issueDate, issueDescription, status, closedDate } = req.body;  
+router.post('/billing', async (req, res) => {
 
-//     const agreementId = req.query.agreementId || req.body.agreementId;
-//     const tenantId = req.query.tenantId || req.body.tenantId;
+    const { billDate, dueDate, amountDue, status } = req.body;
+    const tenantId = req.query.tenantId || req.body.tenantId;
+    const landlordLeaseAgreementId = req.query.LLAID || req.body.LLAID;
 
-//     try {
+    try {
+        if (!tenantId || !landlordLeaseAgreementId) {
+            return res.status(400).json({ message: "tenantId and landlordLeaseAgreementId are required" });
+        }
+
+        const tenantExists = await TenantModel.findById(tenantId);
+
+        if (!tenantExists) {
+            return res.status(400).json({ message: "Tenant does not exist" });
+        }
+
+        const landlordLeaseExists = await LandlordLeaseModel.findById(landlordLeaseAgreementId);
+
+        if (!landlordLeaseExists) {
+            return res.status(400).json({ message: "Landlord Lease Agreement does not exist" });
+        }
+
+        const newBilling = new BillingModel({
+            agreementId:landlordLeaseAgreementId,
+            tenantId,
+            billDate,
+            dueDate,
+            amountDue,
+            status,
+        });
+
        
-//         if (!agreementId || !tenantId) {
-//             return res.status(400).json({ message: "Agreement ID and Tenant ID are required" });
-//         }
+        const savedBilling = await newBilling.save();
 
-    
-//         const agreementExists = await LeaseAgreementModel.findById(agreementId);
-//         if (!agreementExists) {
-//             return res.status(400).json({ message: "Agreement does not exist" });
-//         }
+        res.status(201).json({
+            message: "Billing record created successfully",
+            billing: savedBilling,
+        });
+    } catch (error) {
+        console.error("Error while creating billing record:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+});
 
-//         const tenantExists = await TenantModel.findById(tenantId);
-//         if (!tenantExists) {
-//             return res.status(400).json({ message: "Tenant does not exist" });
-//         }
-//         const newMaintenance = new MaintenanceModel({
-//             agreementId,
-//             tenantId,
-//             issueDate,
-//             issueDescription,
-//             status,
-//             closedDate: status === 'resolved' ? closedDate : null 
-//         });
+// Maintenance Route 
 
-//         await newMaintenance.save();
 
-     
-//         res.status(201).json({
-//             message: 'Maintenance issue created successfully',
-//             maintenance: newMaintenance
-//         });
-//     } catch (error) {
-//         console.error('Error while creating maintenance issue:', error);
-//         res.status(500).json({ message: 'Internal Server Error' });
-//     }
-// });
+router.post('/maintenance', async (req, res) => {
+    const { issueDate, issueDescription, status, closedDate } = req.body;
+    const tenantId = req.query.tenantId || req.body.tenantId;
+    const tenantAgreementId = req.query.tenantAgreementId || req.body.tenantAgreementId;
 
+    try {
+      
+        if (!tenantId || !tenantAgreementId || !issueDate || !issueDescription || !status) {
+            return res.status(400).json({ message: "Missing required fields" });
+        }
+
+
+        const tenantExists = await TenantModel.findById(tenantId);
+        if (!tenantExists) {
+            return res.status(404).json({ message: "Tenant not found" });
+        }
+
+        const agreementExists = await TenantLeaseModel.findById(tenantAgreementId);
+        if (!agreementExists) {
+            return res.status(404).json({ message: "Tenant lease agreement not found" });
+        }
+
+        const newMaintenance = new MaintenanceModel({
+            tenantAgreementId,
+            tenantId,
+            issueDate,
+            issueDescription,
+            status,
+            closedDate
+        });
+
+        const savedMaintenance = await newMaintenance.save();
+
+        res.status(201).json({
+            message: "Maintenance request created successfully",
+            maintenance: savedMaintenance,
+        });
+    } catch (error) {
+        console.error("Error creating maintenance request:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+});
+
+// Tenant Proof
+
+router.post('/tenantProof', async (req, res) => {
+    try {
+        const { proofId, proofValue, proofAttachment } = req.body;
+        const tenantId = req.query.tenantId || req.body.tenantId;
+        
+        if (!proofId || !proofValue || !proofAttachment) {
+            return res.status(400).json({ error: "All fields are required." });
+        }
+
+        
+       
+        const tenantExists = await TenantModel.findById(tenantId);
+        if (!tenantExists) {
+            return res.status(404).json({ message: "Tenant not found" });
+        }
+
+        // Save new proof
+        const tenantProof = new TenantProof({
+            tenantId,
+            proofId,
+            proofValue,
+            proofAttachment
+        });
+
+        await tenantProof.save();
+        res.status(201).json({ message: "Tenant proof added successfully.", tenantProof });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Server error." });
+    }
+});
 
 module.exports = router;

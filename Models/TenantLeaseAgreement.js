@@ -1,21 +1,26 @@
 const mongoose = require('mongoose');
 
 const TenantLeaseModel = mongoose.Schema({
-    PropertId:{
+    propertyId:{
         type:mongoose.Schema.Types.ObjectId,
         ref:'Property',
         required:'true'
     },
-    TenantId:{
+    tenantId:{
         type:mongoose.Schema.Types.ObjectId,
         ref:'Tenant',
+        required:'true'
+    },
+    landlordLeaseAgreementId:{
+        type:mongoose.Schema.Types.ObjectId,
+        ref:'LandlordLeaseAgreement',
         required:'true'
     },
     leaseTerms:{
         type:String,
         required:true
     },
-    AcceptanaceStatus:{
+    AcceptanceStatus:{
         type:String,
         enum:['Accept', 'Disagree'],
         required:'true',
@@ -28,6 +33,6 @@ const TenantLeaseModel = mongoose.Schema({
 
 })
 
-const tenantLeaseModelSchema = mongoose.Model('TenantLeaseAgreement', TenantLeaseModel);
+const tenantLeaseModelSchema = mongoose.model('TenantLeaseAgreement', TenantLeaseModel);
 
 module.exports = tenantLeaseModelSchema;

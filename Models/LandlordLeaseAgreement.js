@@ -35,11 +35,16 @@ const landlordLeaseModel = mongoose.Schema({
         ref:'LeaseTerm',
         required:'true'
     },
-    LeaseAcceptanceStatus:{
-        type:mongoose.Schema.Types.ObjectId,
-        ref:'TenantLeaseAgreement',
-        required:false,
-        default:null
+    // LeaseAcceptanceStatus:{
+    //     type:mongoose.Schema.Types.AcceptanceStatus,
+    //     ref:'TenantLeaseAgreement',
+    //     required:false,
+    //     default:null
+    // },
+    LeaseAcceptanceStatus: {
+        type: String,
+        enum: ['Accept', 'Disagree'],
+        default: null
     },
     Status:{
     type: String,
